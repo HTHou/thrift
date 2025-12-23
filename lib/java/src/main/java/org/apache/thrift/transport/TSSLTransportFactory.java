@@ -192,6 +192,28 @@ public class TSSLTransportFactory {
     return createClient(ctx.getSocketFactory(), host, port, timeout);
   }
 
+  /**
+   * Get a custom configured TNonblockingTransport. The SSL settings are obtained from the passed in
+   * TSSLTransportParameters.
+   *
+   * @param host
+   * @param port
+   * @param timeout
+   * @param params
+   * @return TNonblockingTransport
+   * @throws TTransportException
+   */
+  public static TNonblockingTransport getNonblockingClientSocket(
+      String host, int port, int timeout, TSSLTransportParameters params)
+      throws TTransportException, IOException {
+    if (params == null || !(params.isKeyStoreSet || params.isTrustStoreSet)) {
+      throw new TTransportException(
+          "Either one of the KeyStore or TrustStore must be set for SSLTransportParameters");
+    }
+    SSLContext ctx = createSSLContext(params);
+    return new TNonblockingSSLSocket(host, port, timeout, ctx);
+  }
+
   private static SSLContext createSSLContext(TSSLTransportParameters params)
       throws TTransportException {
     SSLContext ctx;
