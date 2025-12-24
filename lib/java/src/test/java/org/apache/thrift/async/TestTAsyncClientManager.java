@@ -263,8 +263,7 @@ public class TestTAsyncClientManager {
   }
 
   private Srv.AsyncClient getClient() throws IOException, TTransportException {
-    TNonblockingTransport clientSocket = getClientTransport();
-    return new Srv.AsyncClient(new TBinaryProtocol.Factory(), clientManager_, clientSocket);
+    return new Srv.AsyncClient(new TBinaryProtocol.Factory(), clientManager_, getClientTransport());
   }
 
   protected TNonblockingTransport getClientTransport() throws TTransportException, IOException {

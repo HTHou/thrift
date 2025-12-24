@@ -143,7 +143,7 @@ public class TestServer {
       int port = 9090;
       boolean ssl = false;
       boolean zlib = false;
-      String transport_type = "buffered";
+      String transport_type = "framed";
       String protocol_type = "binary";
       String server_type = "thread-pool";
       String domain_socket = "";

@@ -200,10 +200,10 @@ public class TSSLTransportFactory {
    * @param port
    * @param timeout
    * @param params
-   * @return TNonblockingTransport
+   * @return A SSL wrapped TNonblockingSocket
    * @throws TTransportException
    */
-  public static TNonblockingTransport getNonblockingClientSocket(
+  public static TNonblockingSocket getNonblockingClientSocket(
       String host, int port, int timeout, TSSLTransportParameters params)
       throws TTransportException, IOException {
     if (params == null || !(params.isKeyStoreSet || params.isTrustStoreSet)) {

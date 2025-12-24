@@ -22,12 +22,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.server.ServerTestBase;
 import org.apache.thrift.server.TThreadPoolServer;
+import org.apache.thrift.server.TThreadPoolServer.Args;
 import org.apache.thrift.transport.TNonblockingTransport;
 import org.apache.thrift.transport.TSSLTransportFactory;
-import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.thrift.transport.layered.TFramedTransport;
 import org.junit.jupiter.api.AfterEach;
@@ -45,12 +44,11 @@ public class TestTAsyncSSLClientManager extends TestTAsyncClientManager {
 
   @BeforeEach
   public void setUp() throws Exception {
-    TThreadPoolServer.Args args =
-        new TThreadPoolServer.Args(getServerTransport())
-            .protocolFactory(new TBinaryProtocol.Factory())
-            .transportFactory(new TFramedTransport.Factory())
-            .processor(new Srv.Processor<>(new SrvHandler()));
-    server_ = new TThreadPoolServer(args);
+    server_ =
+        new TThreadPoolServer(
+            new Args(TSSLTransportFactory.getServerSocket(ServerTestBase.PORT))
+                .transportFactory(new TFramedTransport.Factory())
+                .processor(new Srv.Processor<>(new SrvHandler())));
     serverThread_ = new Thread(() -> server_.serve());
     serverThread_.start();
     clientManager_ = new TAsyncClientManager();
@@ -65,27 +63,15 @@ public class TestTAsyncSSLClientManager extends TestTAsyncClientManager {
     super.tearDown();
   }
 
-  protected TServerSocket getServerTransport() throws Exception {
-    return TSSLTransportFactory.getServerSocket(ServerTestBase.PORT);
-  }
-
   @Override
   public TNonblockingTransport getClientTransport() throws TTransportException, IOException {
     TSSLTransportFactory.TSSLTransportParameters params =
         new TSSLTransportFactory.TSSLTransportParameters();
-    params.setTrustStore(getTrustStoreLocation(), getTrustStorePassword());
+    params.setTrustStore(trustStoreLocation, trustStorePassword);
     TNonblockingTransport clientTransport =
         TSSLTransportFactory.getNonblockingClientSocket(
             ServerTestBase.HOST, ServerTestBase.PORT, 0, params);
     clientTransportList.add(clientTransport);
     return clientTransport;
-  }
-
-  protected final String getTrustStoreLocation() {
-    return trustStoreLocation;
-  }
-
-  protected final String getTrustStorePassword() {
-    return trustStorePassword;
   }
 }
