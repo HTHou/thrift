@@ -140,6 +140,18 @@ public class TSSLTransportFactory {
     }
   }
 
+  public static TNonblockingServerSocket getNonblockingServerSocket(int port)
+      throws TTransportException, IOException {
+    SSLContext ctx;
+    try {
+      ctx = SSLContext.getDefault();
+    } catch (Exception e) {
+      throw new TTransportException(
+          TTransportException.NOT_OPEN, "Error creating the transport", e);
+    }
+    return new TNonblockingSSLServerSocket(port, 0, ctx);
+  }
+
   /**
    * Get a default SSL wrapped TSocket connected to the specified host and port. All the client
    * methods return a bound connection. So there is no need to call open() on the TTransport.

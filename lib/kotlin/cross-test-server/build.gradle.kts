@@ -1,3 +1,8 @@
+import org.gradle.kotlin.dsl.assign
+import org.gradle.kotlin.dsl.withType
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -46,10 +51,34 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+tasks.withType<KotlinCompile> {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_1_8
+        freeCompilerArgs = listOf("-Xjdk-release=1.8")
+    }
+}
+
+val keyStore: String =
+    file("$projectDir/../../java/src/crossTest/resources/.serverkeystore").canonicalPath
+val trustStore: String =
+    file("$projectDir/../../java/src/crossTest/resources/.truststore").canonicalPath
+
 tasks {
     application {
         applicationName = "TestServer"
         mainClass.set("org.apache.thrift.test.TestServerKt")
+        applicationDefaultJvmArgs =
+            listOf(
+                "-Djavax.net.ssl.keyStore=$keyStore",
+                "-Djavax.net.ssl.keyStorePassword=thrift",
+                "-Djavax.net.ssl.trustStore=$trustStore",
+                "-Djavax.net.ssl.trustStorePassword=thrift",
+            )
     }
 
     if (JavaVersion.current().isJava11Compatible) {

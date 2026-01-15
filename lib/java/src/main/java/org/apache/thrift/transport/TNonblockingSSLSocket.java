@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.net.ssl.SSLContext;
@@ -64,6 +65,23 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
     netUnwrap = ByteBuffer.allocate(netBufferSize);
     netWrap = ByteBuffer.allocate(netBufferSize);
     isHandshakeCompleted = false;
+  }
+
+  protected TNonblockingSSLSocket(SocketChannel socketChannel, SSLContext sslContext)
+      throws IOException, TTransportException {
+    super(socketChannel);
+    sslEngine_ = sslContext.createSSLEngine();
+    sslEngine_.setUseClientMode(false);
+    sslEngine_.setNeedClientAuth(false);
+
+    int appBufferSize = sslEngine_.getSession().getApplicationBufferSize();
+    int netBufferSize = sslEngine_.getSession().getPacketBufferSize();
+    appUnwrap = ByteBuffer.allocate(appBufferSize);
+    netUnwrap = ByteBuffer.allocate(netBufferSize);
+    netWrap = ByteBuffer.allocate(netBufferSize);
+    isHandshakeCompleted = false;
+    sslEngine_.beginHandshake();
+    doHandShake();
   }
 
   /** {@inheritDoc} */

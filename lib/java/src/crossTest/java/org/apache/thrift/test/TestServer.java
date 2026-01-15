@@ -145,7 +145,7 @@ public class TestServer {
       boolean zlib = false;
       String transport_type = "buffered";
       String protocol_type = "binary";
-      String server_type = "thread-pool";
+      String server_type = "nonblocking";
       String domain_socket = "";
       int string_limit = -1;
       int container_limit = -1;
@@ -206,13 +206,7 @@ public class TestServer {
         if (server_type.equals("simple")) {
         } else if (server_type.equals("thread-pool")) {
         } else if (server_type.equals("nonblocking")) {
-          if (ssl == true) {
-            throw new Exception("SSL is not supported over nonblocking servers!");
-          }
         } else if (server_type.equals("threaded-selector")) {
-          if (ssl == true) {
-            throw new Exception("SSL is not supported over nonblocking servers!");
-          }
         } else {
           throw new Exception("Unknown server type! " + server_type);
         }
@@ -277,8 +271,10 @@ public class TestServer {
       if (server_type.equals("nonblocking") || server_type.equals("threaded-selector")) {
         // Nonblocking servers
         TNonblockingServerSocket tNonblockingServerSocket =
-            new TNonblockingServerSocket(
-                new TNonblockingServerSocket.NonblockingAbstractServerSocketArgs().port(port));
+            ssl
+                ? TSSLTransportFactory.getNonblockingServerSocket(port)
+                : new TNonblockingServerSocket(
+                    new TNonblockingServerSocket.NonblockingAbstractServerSocketArgs().port(port));
 
         if (server_type.contains("nonblocking")) {
           // Nonblocking Server

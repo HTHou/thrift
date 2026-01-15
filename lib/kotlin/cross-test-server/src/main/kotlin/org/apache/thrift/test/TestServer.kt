@@ -263,7 +263,11 @@ private fun getServerEngine(
         ServerType.NonBlocking,
         ServerType.ThreadedSelector -> {
             val tNonblockingServerSocket =
-                TNonblockingServerSocket(NonblockingAbstractServerSocketArgs().port(port))
+                if (ssl) {
+                    TSSLTransportFactory.getNonblockingServerSocket(port)
+                } else {
+                    TNonblockingServerSocket(NonblockingAbstractServerSocketArgs().port(port))
+                }
             when (serverType) {
                 ServerType.NonBlocking -> {
                     val tNonblockingServerArgs = TNonblockingServer.Args(tNonblockingServerSocket)

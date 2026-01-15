@@ -192,17 +192,14 @@
       ],
       "protocols": [
         "binary"
-      ],
-      "sockets": [
-        "ip",
-        "ip-ssl"
       ]
     },
     "transports": [
       "framed"
     ],
     "sockets": [
-      "ip"
+      "ip",
+      "ip-ssl"
     ],
     "protocols": [
       "binary",
