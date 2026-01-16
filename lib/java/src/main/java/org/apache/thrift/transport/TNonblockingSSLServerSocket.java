@@ -22,6 +22,7 @@ package org.apache.thrift.transport;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
 
 public class TNonblockingSSLServerSocket extends TNonblockingServerSocket {
 
@@ -44,8 +45,11 @@ public class TNonblockingSSLServerSocket extends TNonblockingServerSocket {
       if (socketChannel == null) {
         return null;
       }
-
-      TNonblockingSocket tsocket = new TNonblockingSSLSocket(socketChannel, sslContext);
+      SSLEngine sslEngine = sslContext.createSSLEngine();
+      sslEngine.setNeedClientAuth(false);
+      sslEngine.setUseClientMode(false);
+      TNonblockingSocket tsocket =
+          new TNonblockingSSLSocket(socketChannel, sslEngine);
       //      tsocket.setTimeout(clientTimeout_);
       //      tsocket.setMaxFrameSize(maxFrameSize_);
       //      tsocket.setMaxMessageSize(maxMessageSize_);

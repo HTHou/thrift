@@ -35,8 +35,8 @@ import thrift.test.ThriftTest;
 
 public class TestNonblockingServer extends ServerTestBase {
 
-  private Thread serverThread;
-  private TServer server;
+  protected Thread serverThread;
+  protected TServer server;
   private static final int NUM_QUERIES = 1000;
 
   protected TServer getServer(
@@ -121,8 +121,7 @@ public class TestNonblockingServer extends ServerTestBase {
         try {
           testClient.testI32(1);
         } catch (TTransportException e) {
-          System.err.println(e);
-          e.printStackTrace();
+//          System.err.println(e);
           if (e.getCause() instanceof java.net.SocketTimeoutException) {
             fail("timed out when it should have thrown another kind of error!");
           }

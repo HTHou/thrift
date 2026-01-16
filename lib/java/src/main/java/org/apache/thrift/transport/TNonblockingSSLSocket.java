@@ -67,12 +67,10 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
     isHandshakeCompleted = false;
   }
 
-  protected TNonblockingSSLSocket(SocketChannel socketChannel, SSLContext sslContext)
+  protected TNonblockingSSLSocket(SocketChannel socketChannel, SSLEngine sslEngine)
       throws IOException, TTransportException {
     super(socketChannel);
-    sslEngine_ = sslContext.createSSLEngine();
-    sslEngine_.setUseClientMode(false);
-    sslEngine_.setNeedClientAuth(false);
+    sslEngine_ = sslEngine;
 
     int appBufferSize = sslEngine_.getSession().getApplicationBufferSize();
     int netBufferSize = sslEngine_.getSession().getPacketBufferSize();
@@ -115,7 +113,7 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
       }
       try {
         if (doUnwrap() == -1) {
-          throw new IOException("Unable to read " + numBytes + " bytes");
+          return -1;
         }
       } catch (IOException iox) {
         throw new TTransportException(TTransportException.UNKNOWN, iox);
@@ -215,7 +213,6 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
     int num = getSocketChannel().read(netUnwrap);
     netUnwrap.flip();
     if (num < 0) {
-      LOGGER.error("Failed during read operation. Probably server is down");
       return -1;
     }
     SSLEngineResult unwrapResult;

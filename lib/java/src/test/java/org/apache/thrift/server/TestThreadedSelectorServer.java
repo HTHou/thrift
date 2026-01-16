@@ -22,11 +22,20 @@ import org.apache.thrift.TProcessor;
 import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.server.TThreadedSelectorServer.Args;
 import org.apache.thrift.transport.TNonblockingServerSocket;
+import org.apache.thrift.transport.TTransportFactory;
 
 public class TestThreadedSelectorServer extends TestNonblockingServer {
+
+  @Override
   protected TServer getServer(
-      TProcessor processor, TNonblockingServerSocket socket, TProtocolFactory protoFactory) {
-    return new TThreadedSelectorServer(
-        new Args(socket).processor(processor).protocolFactory(protoFactory));
+      TProcessor processor,
+      TNonblockingServerSocket socket,
+      TProtocolFactory protoFactory,
+      TTransportFactory factory) {
+    final Args args = new Args(socket).processor(processor).protocolFactory(protoFactory);
+    if (factory != null) {
+      args.transportFactory(factory);
+    }
+    return new TThreadedSelectorServer(args);
   }
 }
