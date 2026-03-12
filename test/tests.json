@@ -179,7 +179,13 @@
         "cross-test-server/build/install/TestServer/bin/TestServer"
       ],
       "protocols": [
-        "binary"
+        "binary:multi",
+        "compact:multic",
+        "json:multij"
+      ],
+      "sockets": [
+        "ip",
+        "ip-ssl"
       ]
     },
     "client": {
@@ -191,7 +197,9 @@
         "framed"
       ],
       "protocols": [
-        "binary"
+        "multi:binary",
+        "multic:compact",
+        "multij:json"
       ],
       "sockets": [
         "ip",
@@ -202,12 +210,16 @@
       "framed"
     ],
     "sockets": [
-      "ip"
+      "ip",
+      "ip-ssl"
     ],
     "protocols": [
       "binary",
       "compact",
-      "json"
+      "json",
+      "multi",
+      "multic",
+      "multij"
     ],
     "workdir": "../lib/kotlin"
   },

@@ -35,8 +35,8 @@ import thrift.test.ThriftTest;
 
 public class TestNonblockingServer extends ServerTestBase {
 
-  private Thread serverThread;
-  private TServer server;
+  protected Thread serverThread;
+  protected TServer server;
   private static final int NUM_QUERIES = 1000;
 
   protected TServer getServer(

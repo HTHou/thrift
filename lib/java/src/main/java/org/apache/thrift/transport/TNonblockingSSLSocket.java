@@ -20,11 +20,11 @@
 package org.apache.thrift.transport;
 
 import java.io.IOException;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.nio.channels.SocketChannel;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -40,6 +40,7 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
       LoggerFactory.getLogger(TNonblockingSSLSocket.class.getName());
 
   private final SSLEngine sslEngine_;
+  private final boolean clientMode_;
 
   private final ByteBuffer appUnwrap;
   private final ByteBuffer netUnwrap;
@@ -50,17 +51,43 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
 
   private SelectionKey selectionKey;
 
-  private final ExecutorService executorService = Executors.newSingleThreadExecutor();
-
   protected TNonblockingSSLSocket(String host, int port, int timeout, SSLContext sslContext)
       throws IOException, TTransportException {
     super(host, port, timeout);
+    clientMode_ = true;
     sslEngine_ = sslContext.createSSLEngine(host, port);
     sslEngine_.setUseClientMode(true);
 
     int appBufferSize = sslEngine_.getSession().getApplicationBufferSize();
     int netBufferSize = sslEngine_.getSession().getPacketBufferSize();
     appUnwrap = ByteBuffer.allocate(appBufferSize);
+    appUnwrap.limit(0);
+    netUnwrap = ByteBuffer.allocate(netBufferSize);
+    netWrap = ByteBuffer.allocate(netBufferSize);
+    isHandshakeCompleted = false;
+  }
+
+  protected TNonblockingSSLSocket(
+      SocketChannel socketChannel,
+      SSLContext sslContext,
+      boolean clientAuth,
+      String[] cipherSuites)
+      throws IOException, TTransportException {
+    super(socketChannel);
+    clientMode_ = false;
+    Socket socket = socketChannel.socket();
+    sslEngine_ = sslContext.createSSLEngine(socket.getInetAddress().getHostAddress(), socket.getPort());
+    sslEngine_.setUseClientMode(false);
+    sslEngine_.setNeedClientAuth(clientAuth);
+    if (cipherSuites != null) {
+      sslEngine_.setEnabledCipherSuites(cipherSuites);
+    }
+    sslEngine_.beginHandshake();
+
+    int appBufferSize = sslEngine_.getSession().getApplicationBufferSize();
+    int netBufferSize = sslEngine_.getSession().getPacketBufferSize();
+    appUnwrap = ByteBuffer.allocate(appBufferSize);
+    appUnwrap.limit(0);
     netUnwrap = ByteBuffer.allocate(netBufferSize);
     netWrap = ByteBuffer.allocate(netBufferSize);
     isHandshakeCompleted = false;
@@ -89,6 +116,16 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
   /** {@inheritDoc} */
   @Override
   public synchronized int read(ByteBuffer buffer) throws TTransportException {
+    if (!isHandshakeCompleted) {
+      try {
+        if (!doHandShake()) {
+          return 0;
+        }
+      } catch (IOException iox) {
+        throw new TTransportException(TTransportException.UNKNOWN, iox);
+      }
+    }
+
     int numBytes = buffer.remaining();
     while (appUnwrap.limit() == appUnwrap.capacity()
         || appUnwrap.remaining() < buffer.remaining()) {
@@ -111,13 +148,25 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
     }
     // In SSL mode, the Thrift server may merge the frame size and body into a single TLS package.
     // Setting OP_WRITE to trigger subsequent read operations in the Thrift async client.
-    selectionKey.interestOps(SelectionKey.OP_WRITE);
+    if (clientMode_ && selectionKey != null && selectionKey.isValid()) {
+      selectionKey.interestOps(SelectionKey.OP_WRITE);
+    }
     return numBytes;
   }
 
   /** {@inheritDoc} */
   @Override
   public synchronized int write(ByteBuffer buffer) throws TTransportException {
+    if (!isHandshakeCompleted) {
+      try {
+        if (!doHandShake()) {
+          return 0;
+        }
+      } catch (IOException iox) {
+        throw new TTransportException(TTransportException.UNKNOWN, iox);
+      }
+    }
+
     int numBytes = buffer.remaining();
 
     while (buffer.hasRemaining()) {
@@ -135,7 +184,6 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
   /** {@inheritDoc} */
   @Override
   public void close() {
-    executorService.shutdown();
     sslEngine_.closeOutbound();
     super.close();
   }
@@ -161,8 +209,12 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
       HandshakeStatus hs = sslEngine_.getHandshakeStatus();
       switch (hs) {
         case NEED_UNWRAP:
-          if (doUnwrap() == -1) {
+          int bytesRead = doUnwrap();
+          if (bytesRead == -1) {
             LOGGER.error("Unexpected. Handshake failed abruptly during unwrap");
+            return false;
+          }
+          if (bytesRead == 0 && !appUnwrap.hasRemaining()) {
             return false;
           }
           break;
@@ -189,7 +241,7 @@ public class TNonblockingSSLSocket extends TNonblockingSocket implements SocketA
   private void doTask() {
     Runnable runnable;
     while ((runnable = sslEngine_.getDelegatedTask()) != null) {
-      executorService.submit(runnable);
+      runnable.run();
     }
   }
 

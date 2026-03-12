@@ -115,6 +115,79 @@ public class TSSLTransportFactory {
         ctx.getServerSocketFactory(), port, clientTimeout, params.clientAuth, ifAddress, params);
   }
 
+  /**
+   * Get a default SSL wrapped TNonblockingServerTransport bound to the specified port. Default
+   * settings are retrieved from system properties.
+   *
+   * @param port server port
+   * @return A SSL wrapped TNonblockingServerSocket
+   * @throws TTransportException when failed to create server socket
+   */
+  public static TNonblockingSSLServerSocket getNonblockingServerSocket(int port)
+      throws TTransportException {
+    return getNonblockingServerSocket(port, 0);
+  }
+
+  /**
+   * Get a default SSL wrapped TNonblockingServerTransport bound to the specified port.
+   *
+   * @param port server port
+   * @param clientTimeout client timeout in milliseconds
+   * @return A SSL wrapped TNonblockingServerSocket
+   * @throws TTransportException when failed to create server socket
+   */
+  public static TNonblockingSSLServerSocket getNonblockingServerSocket(int port, int clientTimeout)
+      throws TTransportException {
+    return getNonblockingServerSocket(port, clientTimeout, null, null);
+  }
+
+  /**
+   * Get a configured SSL wrapped TNonblockingServerTransport bound to the specified port and
+   * interface.
+   *
+   * @param port server port
+   * @param clientTimeout client timeout in milliseconds
+   * @param ifAddress server bind interface, or null to bind to all interfaces
+   * @param params SSL transport parameters
+   * @return A SSL wrapped TNonblockingServerSocket
+   * @throws TTransportException when failed to create server socket
+   */
+  public static TNonblockingSSLServerSocket getNonblockingServerSocket(
+      int port, int clientTimeout, InetAddress ifAddress, TSSLTransportParameters params)
+      throws TTransportException {
+    SSLContext ctx;
+    boolean clientAuth = false;
+    String[] cipherSuites = null;
+    if (params == null) {
+      try {
+        ctx = SSLContext.getDefault();
+      } catch (Exception e) {
+        throw new TTransportException(
+            TTransportException.NOT_OPEN, "Error creating the transport", e);
+      }
+    } else {
+      if (!(params.isKeyStoreSet || params.isTrustStoreSet)) {
+        throw new TTransportException(
+            "Either one of the KeyStore or TrustStore must be set for SSLTransportParameters");
+      }
+      ctx = createSSLContext(params);
+      clientAuth = params.clientAuth;
+      cipherSuites = params.cipherSuites;
+    }
+
+    TNonblockingSSLServerSocket.NonblockingSSLServerSocketArgs args =
+        new TNonblockingSSLServerSocket.NonblockingSSLServerSocketArgs()
+            .port(port)
+            .clientTimeout(clientTimeout)
+            .sslContext(ctx)
+            .clientAuth(clientAuth)
+            .cipherSuites(cipherSuites);
+    if (ifAddress != null) {
+      args.bindAddr(new java.net.InetSocketAddress(ifAddress, port));
+    }
+    return new TNonblockingSSLServerSocket(args);
+  }
+
   private static TServerSocket createServer(
       SSLServerSocketFactory factory,
       int port,

@@ -33,6 +33,7 @@ import org.apache.thrift.server.TServerEventHandler;
 import org.apache.thrift.server.TSimpleServer;
 import org.apache.thrift.server.TThreadPoolServer;
 import org.apache.thrift.server.TThreadedSelectorServer;
+import org.apache.thrift.transport.TNonblockingServerTransport;
 import org.apache.thrift.transport.TNonblockingServerSocket;
 import org.apache.thrift.transport.TSSLTransportFactory;
 import org.apache.thrift.transport.TServerSocket;
@@ -206,13 +207,7 @@ public class TestServer {
         if (server_type.equals("simple")) {
         } else if (server_type.equals("thread-pool")) {
         } else if (server_type.equals("nonblocking")) {
-          if (ssl == true) {
-            throw new Exception("SSL is not supported over nonblocking servers!");
-          }
         } else if (server_type.equals("threaded-selector")) {
-          if (ssl == true) {
-            throw new Exception("SSL is not supported over nonblocking servers!");
-          }
         } else {
           throw new Exception("Unknown server type! " + server_type);
         }
@@ -276,9 +271,14 @@ public class TestServer {
 
       if (server_type.equals("nonblocking") || server_type.equals("threaded-selector")) {
         // Nonblocking servers
-        TNonblockingServerSocket tNonblockingServerSocket =
-            new TNonblockingServerSocket(
-                new TNonblockingServerSocket.NonblockingAbstractServerSocketArgs().port(port));
+        TNonblockingServerTransport tNonblockingServerSocket;
+        if (ssl) {
+          tNonblockingServerSocket = TSSLTransportFactory.getNonblockingServerSocket(port, 0);
+        } else {
+          tNonblockingServerSocket =
+              new TNonblockingServerSocket(
+                  new TNonblockingServerSocket.NonblockingAbstractServerSocketArgs().port(port));
+        }
 
         if (server_type.contains("nonblocking")) {
           // Nonblocking Server

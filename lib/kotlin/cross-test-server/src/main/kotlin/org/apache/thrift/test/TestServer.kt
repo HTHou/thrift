@@ -41,6 +41,7 @@ import org.apache.thrift.server.TServerEventHandler
 import org.apache.thrift.server.TSimpleServer
 import org.apache.thrift.server.TThreadPoolServer
 import org.apache.thrift.server.TThreadedSelectorServer
+import org.apache.thrift.transport.TNonblockingServerTransport
 import org.apache.thrift.transport.TNonblockingServerSocket
 import org.apache.thrift.transport.TNonblockingServerSocket.NonblockingAbstractServerSocketArgs
 import org.apache.thrift.transport.TSSLTransportFactory
@@ -262,8 +263,12 @@ private fun getServerEngine(
     when (serverType) {
         ServerType.NonBlocking,
         ServerType.ThreadedSelector -> {
-            val tNonblockingServerSocket =
-                TNonblockingServerSocket(NonblockingAbstractServerSocketArgs().port(port))
+            val tNonblockingServerSocket: TNonblockingServerTransport =
+                if (ssl) {
+                    TSSLTransportFactory.getNonblockingServerSocket(port, 0)
+                } else {
+                    TNonblockingServerSocket(NonblockingAbstractServerSocketArgs().port(port))
+                }
             when (serverType) {
                 ServerType.NonBlocking -> {
                     val tNonblockingServerArgs = TNonblockingServer.Args(tNonblockingServerSocket)

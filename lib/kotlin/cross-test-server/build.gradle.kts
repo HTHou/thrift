@@ -32,6 +32,11 @@ val logbackVersion: String by project
 val kotlinxCoroutinesJdk8Version: String by project
 val cliktVersion: String by project
 
+val keyStore: String =
+    file("$projectDir/../../java/src/crossTest/resources/.serverkeystore").canonicalPath
+val trustStore: String =
+    file("$projectDir/../../java/src/crossTest/resources/.truststore").canonicalPath
+
 dependencies {
     implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
@@ -50,6 +55,13 @@ tasks {
     application {
         applicationName = "TestServer"
         mainClass.set("org.apache.thrift.test.TestServerKt")
+        applicationDefaultJvmArgs =
+            listOf(
+                "-Djavax.net.ssl.keyStore=$keyStore",
+                "-Djavax.net.ssl.keyStorePassword=thrift",
+                "-Djavax.net.ssl.trustStore=$trustStore",
+                "-Djavax.net.ssl.trustStorePassword=thrift",
+            )
     }
 
     if (JavaVersion.current().isJava11Compatible) {
