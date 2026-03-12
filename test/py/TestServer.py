@@ -21,6 +21,7 @@
 import logging
 import os
 import signal
+import ssl
 import sys
 import time
 from optparse import OptionParser
@@ -28,6 +29,7 @@ from optparse import OptionParser
 from util import local_libpath
 sys.path.insert(0, local_libpath())
 from thrift.protocol import TProtocol, TProtocolDecorator
+from thrift.Thrift import TException
 
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -78,6 +80,11 @@ class TestHandler(object):
     def testBinary(self, thing):
         if self.options.verbose > 1:
             logging.info('testBinary()')  # TODO: hex output
+        return thing
+
+    def testUuid(self, thing):
+        if self.options.verbose > 1:
+            logging.info('testUuid(%s)' % thing)
         return thing
 
     def testStruct(self, thing):
@@ -204,6 +211,7 @@ class TPedanticSequenceIdProtocolWrapper(TProtocolDecorator.TProtocolDecorator):
     Wraps any protocol with sequence ID checking: looks for outbound
     uniqueness as well as request/response alignment.
     """
+
     def __init__(self, protocol):
         # TProtocolDecorator.__new__ does all the heavy lifting
         pass
@@ -309,12 +317,23 @@ def main(options):
 
     # set up server transport and transport factory
 
-    abs_key_path = os.path.join(os.path.dirname(SCRIPT_DIR), 'keys', 'server.pem')
-
     host = None
     if options.ssl:
         from thrift.transport import TSSLSocket
-        transport = TSSLSocket.TSSLServerSocket(host, options.port, certfile=abs_key_path)
+        keys_dir = os.path.join(os.path.dirname(SCRIPT_DIR), 'keys')
+        ca_certs = os.path.join(keys_dir, 'client.pem')
+        certfile = os.path.join(keys_dir, 'server.crt')
+        keyfile = os.path.join(keys_dir, 'server.key')
+        ssl_version = getattr(ssl, 'PROTOCOL_TLS_SERVER', ssl.PROTOCOL_TLSv1)
+        transport = TSSLSocket.TSSLServerSocket(
+            host,
+            options.port,
+            certfile=certfile,
+            keyfile=keyfile,
+            ca_certs=ca_certs,
+            cert_reqs=ssl.CERT_REQUIRED,
+            ssl_version=ssl_version,
+        )
     else:
         transport = TSocket.TServerSocket(host, options.port, options.domain_socket)
     tfactory = TTransport.TBufferedTransportFactory()
@@ -328,7 +347,9 @@ def main(options):
         tfactory = TTransport.TBufferedTransportFactory()
     # if --zlib, then wrap server transport, and use a different transport factory
     if options.zlib:
-        transport = TZlibTransport.TZlibTransport(transport)  # wrap  with zlib
+        if server_type != "TProcessPoolServer":
+            transport = TZlibTransport.TZlibTransport(transport)  # wrap with zlib
+        # Avoid wrapping the server transport for process pools; TZlibTransport isn't picklable on spawn.
         tfactory = TZlibTransport.TZlibTransportFactory()
 
     # do server-specific setup here:
@@ -407,7 +428,6 @@ if __name__ == '__main__':
     sys.path.insert(0, os.path.join(SCRIPT_DIR, options.genpydir))
 
     from ThriftTest import ThriftTest, SecondService
-    from thrift.Thrift import TException
     from thrift.TMultiplexedProcessor import TMultiplexedProcessor
     from thrift.transport import THeaderTransport
     from thrift.transport import TTransport

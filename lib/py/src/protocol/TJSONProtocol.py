@@ -21,7 +21,7 @@ from .TProtocol import (TType, TProtocolBase, TProtocolException,
                         TProtocolFactory, checkIntegerLimits)
 import base64
 import math
-import sys
+import uuid
 
 
 __all__ = ['TJSONProtocol',
@@ -65,6 +65,7 @@ ESCAPE_CHARS = {
 }
 NUMERIC_CHAR = b'+-.0123456789Ee'
 
+# Type names as TJSONProtocol.cpp
 CTYPES = {
     TType.BOOL: 'tf',
     TType.BYTE: 'i8',
@@ -77,6 +78,7 @@ CTYPES = {
     TType.LIST: 'lst',
     TType.SET: 'set',
     TType.MAP: 'map',
+    TType.UUID: 'uid',
 }
 
 JTYPES = {}
@@ -481,6 +483,11 @@ class TJSONProtocol(TJSONProtocolBase):
     def readBinary(self):
         return self.readJSONBase64()
 
+    def readUuid(self):
+        buff = self.readJSONString(False)
+        val = uuid.UUID(buff)
+        return val
+
     def writeMessageBegin(self, name, request_type, seqid):
         self.resetWriteContext()
         self.writeJSONArrayStart()
@@ -565,6 +572,9 @@ class TJSONProtocol(TJSONProtocolBase):
 
     def writeBinary(self, binary):
         self.writeJSONBase64(binary)
+
+    def writeUuid(self, uuid):
+        self.writeJSONString(str(uuid))
 
 
 class TJSONProtocolFactory(TProtocolFactory):
@@ -659,6 +669,9 @@ class TSimpleJSONProtocol(TJSONProtocolBase):
 
     def writeBinary(self, binary):
         self.writeJSONBase64(binary)
+
+    def writeUuid(self, uuid):
+        self.writeJSONString(str(uuid))
 
 
 class TSimpleJSONProtocolFactory(TProtocolFactory):

@@ -18,6 +18,7 @@
 #
 
 import errno
+import time
 import unittest
 
 from test_sslsocket import ServerAcceptor
@@ -31,7 +32,7 @@ from thrift.transport.TTransport import TTransportException
 
 class TSocketTest(unittest.TestCase):
     def test_failed_connection_raises_exception(self):
-        sock = TSocket(host="localhost", port=60606) # unused port
+        sock = TSocket(host="localhost", port=60606)  # unused port
         with self.assertRaises(TTransportException) as ctx:
             sock.open()
         exc = ctx.exception
@@ -54,7 +55,7 @@ class TSocketTest(unittest.TestCase):
         exc = ctx.exception
         self.assertEqual(exc.message, "read timeout")
 
-        acc.client.close() # this also blocks until the other thread is done
+        acc.client.close()  # this also blocks until the other thread is done
         acc.close()
         sock.close()
 
@@ -98,7 +99,11 @@ class TSocketTest(unittest.TestCase):
             acc.close()
 
             self.assertIsNotNone(sock.handle)
-            self.assertFalse(sock.isOpen())
+            # Give the kernel a moment to propagate FIN before asserting.
+            deadline = time.monotonic() + 0.5
+            while sock.isOpen() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertFalse(sock.isOpen(), "socket still open after 0.5s")
             # after isOpen() returned False the socket should be closed (THRIFT-5813)
             self.assertIsNone(sock.handle)
 

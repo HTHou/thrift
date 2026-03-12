@@ -1,0 +1,25 @@
+plugins:
+  - rubocop-performance
+  - rubocop-rspec
+
+AllCops:
+  DisabledByDefault: true
+  SuggestExtensions: false
+  TargetRubyVersion: 2.7
+  Exclude:
+    - "**/vendor/**/*"
+
+Layout/IndentationConsistency:
+  Enabled: true
+
+Layout/EmptyLines:
+  Enabled: true
+
+Layout/LeadingEmptyLines:
+  Enabled: true
+
+Layout/TrailingEmptyLines:
+  Enabled: true
+
+Layout/TrailingWhitespace:
+  Enabled: true

@@ -251,8 +251,11 @@ RUN apt-get install -y --no-install-recommends \
       php7.4-curl \
       php7.4-xdebug \
       php-pear \
-      re2c \
-      composer
+      re2c
+
+# Install Composer 2 explicitly to avoid distro package version drift.
+RUN curl -sS https://getcomposer.org/installer | php -- --2 --install-dir=/usr/local/bin --filename=composer && \
+    composer --version
 
 RUN apt-get install -y --no-install-recommends \
       `# Python3 dependencies` \
@@ -261,10 +264,9 @@ RUN apt-get install -y --no-install-recommends \
       python3-all-dev \
       python3-pip \
       python3-setuptools \
-      python3-tornado \
-      python3-twisted \
-      python3-wheel \
-      python3-zope.interface
+      python3-wheel
+
+RUN python3 -m pip install --no-cache-dir --upgrade "tornado>=6.3.0" "twisted>=24.3.0" "zope.interface>=6.1"
 
 RUN apt-get install -y --no-install-recommends \
       `# Ruby dependencies` \

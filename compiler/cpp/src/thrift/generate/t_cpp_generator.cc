@@ -65,6 +65,8 @@ public:
     gen_templates_ = false;
     gen_templates_only_ = false;
     gen_moveable_ = false;
+    gen_forward_setter_ = false;
+    gen_template_streamop_ = false;
     gen_no_ostream_operators_ = false;
     gen_no_skeleton_ = false;
     gen_no_constructors_ = false;
@@ -90,8 +92,13 @@ public:
         gen_templates_only_ = (iter->second == "only");
       } else if( iter->first.compare("moveable_types") == 0) {
         gen_moveable_ = true;
+        if (iter->second.compare("forward_setter") == 0) {
+          gen_forward_setter_ = true;
+        }
       } else if ( iter->first.compare("no_ostream_operators") == 0) {
         gen_no_ostream_operators_ = true;
+      } else if ( iter->first.compare("template_streamop") == 0) {
+        gen_template_streamop_ = true;
       } else if ( iter->first.compare("no_skeleton") == 0) {
         gen_no_skeleton_ = true;
       } else if ( iter->first.compare("no_constructors") == 0) {
@@ -126,6 +133,8 @@ public:
   void generate_enum_ostream_operator(std::ostream& out, t_enum* tenum);
   void generate_enum_to_string_helper_function_decl(std::ostream& out, t_enum* tenum);
   void generate_enum_to_string_helper_function(std::ostream& out, t_enum* tenum);
+  void generate_enum_printto_helper_function_decl(std::ostream& out, t_enum* tenum);
+  void generate_enum_printto_helper_function(std::ostream& out, t_enum* tenum);
   void generate_forward_declaration(t_struct* tstruct) override;
   void generate_struct(t_struct* tstruct) override { generate_cpp_struct(tstruct, false); }
   void generate_xception(t_struct* txception) override { generate_cpp_struct(txception, true); }
@@ -153,6 +162,7 @@ public:
                                   bool setters = true,
                                   bool is_user_struct = false,
                                   bool pointers = false);
+  void generate_struct_forward_setter_impls(std::ostream& out, t_struct* tstruct);
   void generate_copy_constructor(std::ostream& out, t_struct* tstruct, bool is_exception);
   void generate_move_constructor(std::ostream& out, t_struct* tstruct, bool is_exception);
   void generate_default_constructor(std::ostream& out, t_struct* tstruct, bool is_exception);
@@ -362,6 +372,16 @@ private:
   bool gen_moveable_;
 
   /**
+   * True if we should generate setters with perfect forwarding for non-primitive types.
+   */
+  bool gen_forward_setter_;
+
+  /**
+   * True if we should generate operator<< and printTo with generic stream type template.
+   */
+  bool gen_template_streamop_;
+
+  /**
    * True if we should generate ostream definitions
    */
   bool gen_no_ostream_operators_;
@@ -452,7 +472,7 @@ void t_cpp_generator::init_generator() {
   string f_types_impl_name = get_out_dir() + program_name_ + "_types.cpp";
   f_types_impl_.open(f_types_impl_name.c_str());
 
-  if (gen_templates_) {
+  if (gen_templates_ || gen_forward_setter_ || gen_template_streamop_) {
     // If we don't open the stream, it appears to just discard data,
     // which is fine.
     string f_types_tcc_name = get_out_dir() + program_name_ + "_types.tcc";
@@ -519,6 +539,12 @@ void t_cpp_generator::init_generator() {
   f_types_impl_ << "#include <ostream>" << '\n' << '\n';
   f_types_impl_ << "#include <thrift/TToString.h>" << '\n' << '\n';
 
+  // For template_streamop, we need TPrintTo.h in the .tcc file for direct streaming
+  // TPrintTo avoids the overhead of to_string which uses ostringstream internally
+  if (gen_template_streamop_) {
+    f_types_tcc_ << "#include <thrift/TPrintTo.h>" << '\n' << '\n';
+  }
+
   // Open namespace
   ns_open_ = namespace_open(program_->get_namespace("cpp"));
   ns_close_ = namespace_close(program_->get_namespace("cpp"));
@@ -542,7 +568,7 @@ void t_cpp_generator::close_generator() {
   // Include the types.tcc file from the types header file,
   // so clients don't have to explicitly include the tcc file.
   // TODO(simpkins): Make this a separate option.
-  if (gen_templates_) {
+  if (gen_templates_ || gen_forward_setter_ || gen_template_streamop_) {
     f_types_ << "#include \"" << get_include_prefix(*get_program()) << program_name_
              << "_types.tcc\"" << '\n' << '\n';
   }
@@ -670,6 +696,12 @@ void t_cpp_generator::generate_enum(t_enum* tenum) {
   generate_enum_to_string_helper_function_decl(f_types_, tenum);
   generate_enum_to_string_helper_function(f_types_impl_, tenum);
 
+  // Generate template printTo specialization for enums when template_streamop is enabled
+  if (gen_template_streamop_) {
+    generate_enum_printto_helper_function_decl(f_types_, tenum);
+    generate_enum_printto_helper_function(f_types_tcc_, tenum);
+  }
+
   has_members_ = true;
 }
 
@@ -759,6 +791,52 @@ void t_cpp_generator::generate_enum_to_string_helper_function(std::ostream& out,
     out << indent() << "} else {" << '\n';
     indent_up();
     out << indent() << "return std::to_string(static_cast<int>(val));" << '\n';
+    indent_down();
+    out << indent() << "}" << '\n';
+
+    scope_down(out);
+    out << '\n';
+  }
+}
+
+void t_cpp_generator::generate_enum_printto_helper_function_decl(std::ostream& out, t_enum* tenum) {
+  out << "template <typename OStream_>" << '\n';
+  out << "void printTo(OStream_& out, const ";
+  if (gen_pure_enums_) {
+    out << tenum->get_name();
+  } else {
+    out << tenum->get_name() << "::type&";
+  }
+  out << " val);" << '\n';
+  out << '\n';
+}
+
+void t_cpp_generator::generate_enum_printto_helper_function(std::ostream& out, t_enum* tenum) {
+  if (!has_custom_ostream(tenum)) {
+    out << "template <typename OStream_>" << '\n';
+    out << "void printTo(OStream_& out, const ";
+    if (gen_pure_enums_) {
+      out << tenum->get_name();
+    } else {
+      out << tenum->get_name() << "::type&";
+    }
+    out << " val) ";
+    scope_up(out);
+
+    out << indent() << "std::map<int, const char*>::const_iterator it = _"
+             << tenum->get_name() << "_VALUES_TO_NAMES.find(";
+    if (gen_enum_class_) {
+      out << "static_cast<int>(val));" << '\n';
+    } else {
+      out << "val);" << '\n';
+    }
+    out << indent() << "if (it != _" << tenum->get_name() << "_VALUES_TO_NAMES.end()) {" << '\n';
+    indent_up();
+    out << indent() << "out << it->second;" << '\n';
+    indent_down();
+    out << indent() << "} else {" << '\n';
+    indent_up();
+    out << indent() << "out << static_cast<int>(val);" << '\n';
     indent_down();
     out << indent() << "}" << '\n';
 
@@ -971,6 +1049,12 @@ void t_cpp_generator::generate_cpp_struct(t_struct* tstruct, bool is_exception) 
   std::ostream& out = (gen_templates_ ? f_types_tcc_ : f_types_impl_);
   generate_struct_reader(out, tstruct);
   generate_struct_writer(out, tstruct);
+  
+  // Generate forward setter template implementations in .tcc file
+  if (gen_forward_setter_) {
+    generate_struct_forward_setter_impls(f_types_tcc_, tstruct);
+  }
+  
   generate_struct_swap(f_types_impl_, tstruct);
   if (!gen_no_default_operators_) {
     generate_equality_operator(f_types_impl_, tstruct);
@@ -987,7 +1071,9 @@ void t_cpp_generator::generate_cpp_struct(t_struct* tstruct, bool is_exception) 
   }
 
   if (!has_custom_ostream(tstruct)) {
-    generate_struct_print_method(f_types_impl_, tstruct);
+    // When template_streamop is enabled, printTo implementation goes to .tcc file
+    std::ostream& print_method_out = (gen_template_streamop_ ? f_types_tcc_ : f_types_impl_);
+    generate_struct_print_method(print_method_out, tstruct);
   }
 
   if (is_exception) {
@@ -1392,9 +1478,15 @@ void t_cpp_generator::generate_struct_declaration(ostream& out,
           << type_name((*m_iter)->get_type(), false, false) << ">";
       out << " val);" << '\n';
     } else {
-      out << '\n' << indent() << "void __set_" << (*m_iter)->get_name() << "("
-          << type_name((*m_iter)->get_type(), false, true);
-      out << " val);" << '\n';
+      // Use template for perfect forwarding with forward_setter on complex types
+      if (gen_forward_setter_ && is_complex_type((*m_iter)->get_type())) {
+        out << '\n' << indent() << "template <typename T_>\n";
+        out << indent() << "void __set_" << (*m_iter)->get_name() << "(T_&& val);" << '\n';
+      } else {
+        out << '\n' << indent() << "void __set_" << (*m_iter)->get_name() << "("
+            << type_name((*m_iter)->get_type(), false, true);
+        out << " val);" << '\n';
+      }
     }
   }
 
@@ -1459,7 +1551,8 @@ void t_cpp_generator::generate_struct_declaration(ostream& out,
 
   if (is_user_struct && !has_custom_ostream(tstruct)) {
     out << indent();
-    if (!gen_templates_) out << "virtual ";
+    // Template methods cannot be virtual, so skip virtual keyword when using template_streamop
+    if (!gen_templates_ && !gen_template_streamop_) out << "virtual ";
     generate_struct_print_method_decl(out, nullptr);
     out << ";" << '\n';
   }
@@ -1510,7 +1603,9 @@ void t_cpp_generator::generate_struct_declaration(ostream& out,
   // When private_optional is enabled, optional members may be private.
   // The generated namespace-scope operator<< needs friend access.
   if (is_user_struct && gen_private_optional_) {
-    indent(out) << "friend ";
+    if (!gen_template_streamop_) {
+      indent(out) << "friend ";
+    }
     generate_struct_ostream_operator_decl(out, tstruct);
   }
 
@@ -1559,6 +1654,11 @@ void t_cpp_generator::generate_struct_definition(ostream& out,
   // Create a setter function for each field
   if (setters) {
     for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+      // Skip implementation for forwarding setters (they're inline in header)
+      if (gen_forward_setter_ && !is_reference((*m_iter)) && is_complex_type((*m_iter)->get_type())) {
+        continue;
+      }
+      
       if (is_reference((*m_iter))) {
         out << '\n' << indent() << "void " << tstruct->get_name() << "::__set_"
             << (*m_iter)->get_name() << "(::std::shared_ptr<"
@@ -1583,9 +1683,49 @@ void t_cpp_generator::generate_struct_definition(ostream& out,
     }
   }
   if (is_user_struct) {
-    generate_struct_ostream_operator(out, tstruct);
+    // When template_streamop is enabled, operator<< implementation goes to .tcc file
+    std::ostream& ostream_op_out = (gen_template_streamop_ ? f_types_tcc_ : out);
+    generate_struct_ostream_operator(ostream_op_out, tstruct);
   }
   out << '\n';
+}
+
+/**
+ * Generates template setter implementations for forward_setter mode.
+ * These are output to the .tcc file.
+ *
+ * @param out Stream to write to
+ * @param tstruct The struct
+ */
+void t_cpp_generator::generate_struct_forward_setter_impls(ostream& out, t_struct* tstruct) {
+  if (!gen_forward_setter_) {
+    return;
+  }
+
+  const vector<t_field*>& members = tstruct->get_members();
+  vector<t_field*>::const_iterator m_iter;
+
+  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    // Only generate implementations for complex types with forward_setter
+    if (is_reference((*m_iter)) || !is_complex_type((*m_iter)->get_type())) {
+      continue;
+    }
+
+    out << '\n' << indent() << "template <typename T_>\n";
+    out << indent() << "void " << tstruct->get_name() << "::__set_"
+        << (*m_iter)->get_name() << "(T_&& val) {" << '\n';
+    indent_up();
+    out << indent() << "this->" << (*m_iter)->get_name() << " = ::std::forward<T_>(val);" << '\n';
+    
+    // assume all fields are required except optional fields.
+    // for optional fields change __isset.name to true
+    bool is_optional = (*m_iter)->get_req() == t_field::T_OPTIONAL;
+    if (is_optional) {
+      out << indent() << "__isset." << (*m_iter)->get_name() << " = true;" << '\n';
+    }
+    indent_down();
+    out << indent() << "}" << '\n';
+  }
 }
 
 /**
@@ -1914,18 +2054,35 @@ void t_cpp_generator::generate_struct_swap_decl(std::ostream& out, t_struct* tst
 }
 
 void t_cpp_generator::generate_struct_ostream_operator_decl(std::ostream& out, t_struct* tstruct) {
-  out << "std::ostream& operator<<(std::ostream& out, const "
-      << tstruct->get_name()
-      << "& obj);" << '\n';
+  if (gen_template_streamop_) {
+    out << "template <typename OStream_>" << '\n';
+    if (gen_private_optional_) {
+      out << indent() << "friend ";
+    }
+    out << "OStream_& operator<<(OStream_& out, const "
+        << tstruct->get_name()
+        << "& obj);" << '\n';
+  } else {
+    out << "std::ostream& operator<<(std::ostream& out, const "
+        << tstruct->get_name()
+        << "& obj);" << '\n';
+  }
   out << '\n';
 }
 
 void t_cpp_generator::generate_struct_ostream_operator(std::ostream& out, t_struct* tstruct) {
   if (!has_custom_ostream(tstruct)) {
     // thrift defines this behavior
-    out << "std::ostream& operator<<(std::ostream& out, const "
-        << tstruct->get_name()
-        << "& obj)" << '\n';
+    if (gen_template_streamop_) {
+      out << "template <typename OStream_>" << '\n';
+      out << "OStream_& operator<<(OStream_& out, const "
+          << tstruct->get_name()
+          << "& obj)" << '\n';
+    } else {
+      out << "std::ostream& operator<<(std::ostream& out, const "
+          << tstruct->get_name()
+          << "& obj)" << '\n';
+    }
     scope_up(out);
     out << indent() << "obj.printTo(out);" << '\n'
         << indent() << "return out;" << '\n';
@@ -1935,11 +2092,24 @@ void t_cpp_generator::generate_struct_ostream_operator(std::ostream& out, t_stru
 }
 
 void t_cpp_generator::generate_struct_print_method_decl(std::ostream& out, t_struct* tstruct) {
-  out << "void ";
-  if (tstruct) {
-    out << tstruct->get_name() << "::";
+  if (gen_template_streamop_) {
+    // For template version, the method itself is templated
+    if (!tstruct) {
+      // Declaration inside class - no "template" keyword here, will be added by caller if needed
+      out << "template <typename OStream_>" << '\n' << indent() << "void ";
+    } else {
+      // External implementation - needs template keyword
+      out << "template <typename OStream_>" << '\n' << indent() << "void ";
+      out << tstruct->get_name() << "::";
+    }
+    out << "printTo(OStream_& out) const";
+  } else {
+    out << "void ";
+    if (tstruct) {
+      out << tstruct->get_name() << "::";
+    }
+    out << "printTo(std::ostream& out) const";
   }
-  out << "printTo(std::ostream& out) const";
 }
 
 void t_cpp_generator::generate_exception_what_method_decl(std::ostream& out,
@@ -1955,35 +2125,49 @@ void t_cpp_generator::generate_exception_what_method_decl(std::ostream& out,
 }
 
 namespace struct_ostream_operator_generator {
-void generate_required_field_value(std::ostream& out, const t_field* field) {
+void generate_required_field_value(std::ostream& out, const t_field* field, bool use_printto) {
+  if (use_printto) {
+    // For template_streamop, use printTo for direct streaming without temporary strings
+    // Use comma operator: out << "x=", printTo(out, x)
+    out << ", printTo(out, " << field->get_name() << ")";
+    return;
+  }
+  // For std::ostream, use to_string (backward compatible)
   out << " << to_string(" << field->get_name() << ")";
 }
 
-void generate_optional_field_value(std::ostream& out, const t_field* field) {
-  out << "; (__isset." << field->get_name() << " ? (out";
-  generate_required_field_value(out, field);
-  out << ") : (out << \"<null>\"))";
+void generate_optional_field_value(std::ostream& out, const t_field* field, bool use_printto) {
+  out << "; (__isset." << field->get_name() << " ? ";
+  if (use_printto) {
+    // For printTo, call directly without wrapping in (out ...)
+    out << "printTo(out, " << field->get_name() << ")";
+  } else {
+    // For to_string, need to wrap with (out << ...)
+    out << "(out << to_string(" << field->get_name() << "))";
+  }
+  out << " : (out << \"<null>\"))";
 }
 
-void generate_field_value(std::ostream& out, const t_field* field) {
+void generate_field_value(std::ostream& out, const t_field* field, bool use_printto) {
   if (field->get_req() == t_field::T_OPTIONAL)
-    generate_optional_field_value(out, field);
+    generate_optional_field_value(out, field, use_printto);
   else
-    generate_required_field_value(out, field);
+    generate_required_field_value(out, field, use_printto);
 }
 
 void generate_field_name(std::ostream& out, const t_field* field) {
   out << "\"" << field->get_name() << "=\"";
 }
 
-void generate_field(std::ostream& out, const t_field* field) {
+void generate_field(std::ostream& out, const t_field* field, bool use_printto) {
   generate_field_name(out, field);
-  generate_field_value(out, field);
+  generate_field_value(out, field, use_printto);
 }
 
 void generate_fields(std::ostream& out,
                      const vector<t_field*>& fields,
-                     const std::string& indent) {
+                     const std::string& indent,
+                     bool use_printto) {
   const vector<t_field*>::const_iterator beg = fields.begin();
   const vector<t_field*>::const_iterator end = fields.end();
 
@@ -1994,7 +2178,7 @@ void generate_fields(std::ostream& out,
       out << "\", \" << ";
     }
 
-    generate_field(out, *it);
+    generate_field(out, *it, use_printto);
     out << ";" << '\n';
   }
 }
@@ -2010,9 +2194,16 @@ void t_cpp_generator::generate_struct_print_method(std::ostream& out, t_struct* 
 
   indent_up();
 
+  bool use_printto = gen_template_streamop_;
+  if (use_printto) {
+    // For template_streamop, use printTo for direct streaming (better performance)
+    out << indent() << "using ::apache::thrift::printTo;" << '\n';
+  }
+  // Always include to_string as well for compatibility
   out << indent() << "using ::apache::thrift::to_string;" << '\n';
+  
   out << indent() << "out << \"" << tstruct->get_name() << "(\";" << '\n';
-  struct_ostream_operator_generator::generate_fields(out, tstruct->get_members(), indent());
+  struct_ostream_operator_generator::generate_fields(out, tstruct->get_members(), indent(), use_printto);
   out << indent() << "out << \")\";" << '\n';
 
   indent_down();
@@ -4988,6 +5179,8 @@ THRIFT_REGISTER_GENERATOR(
     "                     When 'pure_enums=enum_class', generate C++ 11 enum class.\n"
     "    include_prefix:  Use full include paths in generated files.\n"
     "    moveable_types:  Generate move constructors and assignment operators.\n"
+    "                     When 'moveable_types=forward_setter', also generate setters\n"
+    "                     with perfect forwarding for non-primitive types.\n"
     "    no_ostream_operators:\n"
     "                     Omit generation of ostream definitions.\n"
     "    no_skeleton:     Omits generation of skeleton.\n")

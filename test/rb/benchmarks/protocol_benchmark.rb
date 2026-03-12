@@ -38,6 +38,15 @@ ruby_binary_protocol = Thrift::BinaryProtocol.new(transport1)
 transport2 = Thrift::MemoryBuffer.new
 c_fast_binary_protocol = Thrift::BinaryProtocolAccelerated.new(transport2)
 
+transport3 = Thrift::MemoryBuffer.new
+header_binary_protocol = Thrift::HeaderProtocol.new(transport3)
+
+transport4 = Thrift::MemoryBuffer.new
+header_compact_protocol = Thrift::HeaderProtocol.new(transport4, nil, Thrift::HeaderSubprotocolID::COMPACT)
+
+transport5 = Thrift::MemoryBuffer.new
+header_zlib_protocol = Thrift::HeaderProtocol.new(transport5)
+header_zlib_protocol.add_transform(Thrift::HeaderTransformID::ZLIB)
 
 ooe = Fixtures::Structs::OneOfEach.new
 ooe.im_true   = true
@@ -119,12 +128,11 @@ n4.dbl_map[-1232349.5489345] = n3
 n4.str_map = {}
 n4.str_map[''] = n3
 
-
 # prof = RubyProf.profile do
 #   n4.write(c_fast_binary_protocol)
 #   Fixtures::Structs::Nested4.new.read(c_fast_binary_protocol)
 # end
-# 
+#
 # printer = RubyProf::GraphHtmlPrinter.new(prof)
 # printer.print(STDOUT, :min_percent=>0)
 
@@ -132,43 +140,80 @@ Benchmark.bmbm do |x|
   x.report("ruby write large (1MB) structure once") do
     n4.write(ruby_binary_protocol)
   end
-  
+
   x.report("ruby read large (1MB) structure once") do
     Fixtures::Structs::Nested4.new.read(ruby_binary_protocol)
   end
-  
-  x.report("c write large (1MB) structure once") do    
+
+  x.report("c write large (1MB) structure once") do
     n4.write(c_fast_binary_protocol)
   end
-  
+
   x.report("c read large (1MB) structure once") do
     Fixtures::Structs::Nested4.new.read(c_fast_binary_protocol)
   end
-  
-  
-  
+
   x.report("ruby write 10_000 small structures") do
     10_000.times do
       ooe.write(ruby_binary_protocol)
     end
   end
-  
+
   x.report("ruby read 10_000 small structures") do
     10_000.times do
       Fixtures::Structs::OneOfEach.new.read(ruby_binary_protocol)
     end
   end
-  
+
   x.report("c write 10_000 small structures") do
     10_000.times do
       ooe.write(c_fast_binary_protocol)
     end
   end
-  
+
   x.report("c read 10_000 small structures") do
     10_000.times do
       Fixtures::Structs::OneOfEach.new.read(c_fast_binary_protocol)
     end
   end
-  
+
+  x.report("header (binary) write 10_000 small structures") do
+    10_000.times do
+      ooe.write(header_binary_protocol)
+      header_binary_protocol.trans.flush
+    end
+  end
+
+  x.report("header (binary) read 10_000 small structures") do
+    10_000.times do
+      Fixtures::Structs::OneOfEach.new.read(header_binary_protocol)
+    end
+  end
+
+  x.report("header (compact) write 10_000 small structures") do
+    10_000.times do
+      ooe.write(header_compact_protocol)
+      header_compact_protocol.trans.flush
+    end
+  end
+
+  x.report("header (compact) read 10_000 small structures") do
+    10_000.times do
+      Fixtures::Structs::OneOfEach.new.read(header_compact_protocol)
+    end
+  end
+
+  x.report("header (zlib) write 10_000 small structures") do
+    10_000.times do
+      ooe.write(header_zlib_protocol)
+      header_zlib_protocol.trans.flush
+    end
+  end
+
+  x.report("header (zlib) read 10_000 small structures") do
+    10_000.times do
+      Fixtures::Structs::OneOfEach.new.read(header_zlib_protocol)
+    end
+  end
+
 end
